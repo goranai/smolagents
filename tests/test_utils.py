@@ -16,6 +16,7 @@ import inspect
 import os
 import textwrap
 import unittest
+from typing import Any, Optional
 
 import pytest
 from IPython.core.interactiveshell import InteractiveShell
@@ -208,6 +209,36 @@ def test_get_source_ipython_errors_type_error():
 def test_instance_to_source(tool, expected_tool_source):
     tool_source = instance_to_source(tool, base_cls=Tool)
     assert tool_source == expected_tool_source
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "\U0001f600",
+        "First\nC:\\new\\test",
+        'quotes """\nbackslash\\',
+        'ends with a quote"\nsecond line"',
+        "tab\tand\\u0041 escape text",
+        "ordinary text",
+        "two\nlines",
+    ],
+)
+def test_instance_to_source_preserves_string_attributes(value):
+    class SavedValueTool(Tool):
+        name = "saved_value_tool"
+        description = "Return saved text."
+        inputs = {}
+        output_type = "string"
+
+        def forward(self) -> str:
+            return self.message
+
+    SavedValueTool.message = value
+    source = instance_to_source(SavedValueTool(), base_cls=Tool)
+    source.encode("utf-8")
+    namespace = {}
+    exec(source, {"Tool": Tool, "Any": Any, "Optional": Optional}, namespace)
+    assert namespace["SavedValueTool"].message == value
 
 
 def test_e2e_class_tool_save(tmp_path):

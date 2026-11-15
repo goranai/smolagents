@@ -282,6 +282,25 @@ class ImportFinder(ast.NodeVisitor):
             self.packages.add(base_package)
 
 
+def _string_source(value: str) -> str:
+    """Python source for a string attribute that evaluates back to exactly the same string.
+
+    Keeps the readable forms (a triple-quoted block for multiline text, a double-quoted literal otherwise) when they
+    round-trip, and falls back to `repr` when they don't, e.g. for quotes next to the delimiters or lone surrogates.
+    """
+    if "\n" in value:
+        candidate = '"""' + value.replace("\\", "\\\\").replace('"""', r"\"\"\"") + '"""'
+    else:
+        candidate = json.dumps(value, ensure_ascii=False)
+    try:
+        candidate.encode("utf-8")
+        if ast.literal_eval(candidate) == value:
+            return candidate
+    except (SyntaxError, ValueError):
+        pass
+    return repr(value)
+
+
 def instance_to_source(instance, base_cls=None):
     """Convert an instance to its class source code representation."""
     cls = instance.__class__
@@ -310,12 +329,7 @@ def instance_to_source(instance, base_cls=None):
 
     for name, value in class_attrs.items():
         if isinstance(value, str):
-            # multiline value
-            if "\n" in value:
-                escaped_value = value.replace('"""', r"\"\"\"")  # Escape triple quotes
-                class_lines.append(f'    {name} = """{escaped_value}"""')
-            else:
-                class_lines.append(f"    {name} = {json.dumps(value)}")
+            class_lines.append(f"    {name} = {_string_source(value)}")
         else:
             class_lines.append(f"    {name} = {repr(value)}")
 
